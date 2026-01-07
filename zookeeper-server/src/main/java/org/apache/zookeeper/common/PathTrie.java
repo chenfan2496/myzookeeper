@@ -3,10 +3,7 @@ package org.apache.zookeeper.common;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -171,7 +168,7 @@ public class PathTrie {
             for (final String component : pathComponents) {
                 TrieNode child = parent.children.get(component);
                 if (child == null) {
-                   return;
+                    return;
                 }
                 parent = child;
             }
@@ -215,6 +212,44 @@ public class PathTrie {
         return true;
     }
 
+    public String findMaxPrefix(String path) {
+        Objects.requireNonNull(path, "Path cannot be null");
+
+        if (path.length() == 0) {
+            throw new IllegalArgumentException("Invalid path: " + path);
+        }
+        final String[] pathComponents = split(path);
+
+        readLock.lock();
+        try {
+            TrieNode parent = rootNode;
+            TrieNode deepestPropertyNode = null;
+            for (String component : pathComponents) {
+                parent = parent.children.get(component);
+                if( parent == null ) {
+                    LOG.debug("{}", component);
+                    break;
+                }
+                if(parent.hasProperty()) {
+                    deepestPropertyNode = parent;
+                }
+            }
+
+            if (deepestPropertyNode == null) {
+                return "/";
+            }
+            final Deque<String> treePath = new ArrayDeque<>();
+            TrieNode node = deepestPropertyNode;
+            while(node != rootNode) {
+                treePath.offerFirst(node.value);
+                node = node.parent;
+            }
+            return "/" + String.join("/",treePath);
+        } finally {
+            readLock.unlock();
+        }
+    }
+
     /**
      * Clear all nodes in the trie.
      */
@@ -226,6 +261,7 @@ public class PathTrie {
             writeLock.unlock();
         }
     }
+
 
     private static String[] split(final String path) {
         return Stream.of(path.split("/")).filter(t -> !t.trim().isEmpty()).toArray(String[]::new);
